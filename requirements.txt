@@ -1,0 +1,13 @@
+langgraph>=1.0,<2
+langchain-ollama>=1.0,<2
+lunar-python>=1.4,<2
+torch
+transformers
+datasets
+accelerate
+peft
+trl
+ipykernel
+tianzhi-core
+jieba>=0.42.1,<1
+rank-bm25>=0.2.2,<1
