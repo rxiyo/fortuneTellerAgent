@@ -9,7 +9,7 @@ from langchain_core.tools import tool
 from agent import create_graph
 from agent_trace import SessionTrace
 from tools.catalog import inspect_tianzhi_api
-from tools.rag import reciprocal_rank_fusion, search_classics
+from tools.rag import HybridRAG, reciprocal_rank_fusion, search_classics
 
 
 def request_tool(tool_name, call_id, **args):
@@ -146,6 +146,32 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(set(schema["required"]), {"keyword_queries", "semantic_queries"})
         with self.assertRaisesRegex(ValueError, "同时提供"):
             search_classics.invoke({"keyword_queries": ["夫星"], "semantic_queries": []})
+
+    def test_hybrid_search_reranks_candidates_before_applying_limit(self):
+        class KeywordIndex:
+            def search(self, queries):
+                return [0, 1, 2]
+
+        class VectorIndex:
+            def search(self, queries):
+                return [0, 1, 2], 0
+
+        class Reranker:
+            def rerank(self, candidates, question, keywords, phrases, limit):
+                self.received = (candidates, question, keywords, phrases, limit)
+                return [{**candidates[-1], "rerank_score": 9.0}], 1
+
+        rag = HybridRAG()
+        rag.passages = [{"passage_id": str(i), "book": "书", "chapter": "篇", "text": str(i)}
+                        for i in range(3)]
+        rag.keyword_index, rag.vector_index, rag.reranker = KeywordIndex(), VectorIndex(), Reranker()
+        result = rag.search(["夫星"], ["婚姻规则"], limit=1, question="婚姻如何？")
+        candidates, question, keywords, phrases, limit = rag.reranker.received
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual((question, keywords, phrases, limit), ("婚姻如何？", ["夫星"], ["婚姻规则"], 1))
+        self.assertEqual(result["passages"][0]["passage_id"], "2")
+        self.assertEqual(result["passages"][0]["rerank_score"], 9.0)
+        self.assertTrue(any("重排" in notice for notice in result["notices"]))
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ flowchart TD
     A[用户输入和会话历史] --> B[DeepSeek 判断下一步]
     B -->|请求工具| C[LangGraph ToolNode]
     C --> D[tianzhi-core 目录或计算]
-    C --> E[BM25 和向量召回再做 RRF 融合]
+    C --> E[BM25 和向量召回、RRF 融合及交叉编码器重排]
     D --> B
     E --> B
     B -->|返回文字| F[终端显示回答或追问]
@@ -38,9 +38,9 @@ flowchart TD
 
 - `inspect_tianzhi_api` 查询安装版 `tianzhi-core` 的公开目录、签名和返回字段。用 `layer="bazi"` 查看八字层，可按模块或完整方法名筛选。
 - `call_tianzhi_api` 按目录执行计算。比如用 `bazi.chart.build_chart` 生成四柱、藏干、十神，再用返回的 `{"$ref":"r1"}` 或 `{"$ref":"r1.quad"}` 调用大运、流年、旺衰、用神等方法。
-- `search_classics` 接收 Agent 直接填写的 `keyword_queries` 和 `semantic_queries`。用 BM25 和向量分别召回，再按片段 ID 进行 RRF 融合，返回古籍文本、出处、片段 ID 和各路排名。
+- `search_classics` 接收 Agent 填写的 `question`、`keyword_queries` 和 `semantic_queries`。用 BM25 和向量分别召回，按片段 ID 进行 RRF 融合，再用交叉编码器对最多 30 条候选重排，返回古籍文本、出处、片段 ID、各路排名和重排分数。
 
-古籍索引使用 `classics/`，沿用 `tool_workflow_test/rag_test.ipynb` 的切分、分词和向量窗口设置。首次使用向量检索时加载 embedding 模型。语料和模型版本一致时可以复用 Notebook 在 `.rag_cache/` 生成的向量。
+古籍索引使用 `classics/`，沿用 `tool_workflow_test/rag_test.ipynb` 的切分、分词、向量窗口和重排设置。首次检索时加载 embedding 模型和独立的交叉编码器；本机没有模型缓存时需要联网下载。语料和模型版本一致时可以复用 Notebook 在 `.rag_cache/` 生成的向量。重排分数是排序信号，不是正确率；输入截断时会在 `notices` 中提示。
 
 ## 文件分工
 
@@ -51,7 +51,7 @@ flowchart TD
 | `agent_trace.py` | 观察图执行期间新增的消息，按轮次写入本地日志。 |
 | `tools/catalog.py` | 读取安装版 `tianzhi-core` 的方法目录和签名。 |
 | `tools/tianzhi_runtime.py` | 执行目录里的方法，保留原始计算对象，分配可串联的 `$ref`。 |
-| `tools/rag.py` | 加载并切分古籍，为 BM25 和向量检索建立索引，融合并返回出处。 |
+| `tools/rag.py` | 加载并切分古籍，进行 BM25、向量检索、融合与重排，返回出处。 |
 | `tools/validation.py` | 独立的旧输入辅助函数。当前图只有模型和工具节点。 |
 | `tools/__init__.py`、`requirements.txt` | 工具包说明和 Python 依赖清单。 |
 | `classics/`、`.rag_cache/` | 古籍 JSONL 语料与可复用的文档向量。 |

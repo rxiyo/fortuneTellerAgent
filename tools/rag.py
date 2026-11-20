@@ -1,4 +1,4 @@
-"""古籍混合检索，沿用 rag_test 的切分、BM25、向量窗口和 RRF。"""
+"""古籍混合检索：BM25、向量召回、RRF 融合和交叉编码器重排。"""
 from __future__ import annotations
 
 import hashlib
@@ -18,6 +18,7 @@ from rank_bm25 import BM25Okapi
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 # 这里使用的模型把文本编码成向量。终端里配置的 DeepSeek 负责对话和选工具。
 EMBED_MODEL = "shibing624/text2vec-base-chinese"
+RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 EMBED_MAX_TOKENS = 128
 WINDOW_SIZE, WINDOW_OVERLAP = 110, 20
 # 每路保留至多 30 条候选。RRF_K 是倒数排名公式中的平滑常数。
@@ -232,6 +233,42 @@ class VectorIndex:
         return [index for index, _, _ in reciprocal_rank_fusion(rankings, RECALL_K)], truncated
 
 
+class CrossEncoderReranker:
+    def __init__(self):
+        import torch
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+        self.torch = torch
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
+        def load(loader):
+            try:
+                return loader.from_pretrained(RERANK_MODEL, local_files_only=True)
+            except OSError:
+                return loader.from_pretrained(RERANK_MODEL)
+
+        self.tokenizer = load(AutoTokenizer)
+        self.model = load(AutoModelForSequenceClassification).to(self.device).eval()
+
+    def rerank(self, candidates, question, keywords, phrases, limit):
+        # 与 Notebook 一样，将问题、语义查询和关键词与每个候选片段成对评分。
+        query = ("用户问题：" + question + "\n语义查询：" + "；".join(phrases)
+                 + "\n关键词：" + "；".join(keywords))
+        ranked, truncated = [], 0
+        for start in range(0, len(candidates), 8):
+            batch = candidates[start:start + 8]
+            texts = [f"{item['book']} {item['chapter']}\n{item['text']}" for item in batch]
+            lengths = self.tokenizer([query] * len(batch), texts, truncation=False, verbose=False)["input_ids"]
+            truncated += sum(len(ids) > 512 for ids in lengths)
+            inputs = self.tokenizer([query] * len(batch), texts, padding=True, truncation=True,
+                                    max_length=512, return_tensors="pt").to(self.device)
+            with self.torch.inference_mode():
+                scores = self.model(**inputs).logits.reshape(-1).tolist()
+            ranked.extend({**item, "rerank_score": float(score)} for item, score in zip(batch, scores))
+        ranked.sort(key=lambda item: -item["rerank_score"])
+        return ranked[:limit], truncated
+
+
 class HybridRAG:
     def __init__(self, corpus_dir=PROJECT_DIR / "classics", cache_dir=PROJECT_DIR / ".rag_cache"):
         self.corpus_dir = corpus_dir
@@ -239,10 +276,11 @@ class HybridRAG:
         self.passages = None
         self.keyword_index = None
         self.vector_index = None
+        self.reranker = None
         # ToolNode 可以并发执行工具，同一索引只在首次需要时构建一次。
         self.lock = Lock()
 
-    def search(self, keyword_queries, semantic_queries, limit=5):
+    def search(self, keyword_queries, semantic_queries, limit=5, question=""):
         # 1. 接收 Agent 给出的两组查询，去掉空项和重复项。
         keywords = list(dict.fromkeys(query.strip() for query in keyword_queries if query.strip()))
         phrases = list(dict.fromkeys(query.strip() for query in semantic_queries if query.strip()))
@@ -261,17 +299,24 @@ class HybridRAG:
                 self.vector_index = VectorIndex(self.passages, self.cache_dir)
             keyword_hits = self.keyword_index.search(keywords)
             vector_hits, truncated = self.vector_index.search(phrases)
-
-        # 3. 两路在同一批父片段上做 RRF，附上各路排名和原文交回 Agent。
-        rankings = {"keyword": keyword_hits, "vector": vector_hits}
-        fused = reciprocal_rank_fusion(rankings, limit, tie_breaker=lambda i: self.passages[i]["passage_id"])
-        hits = [
-            {**self.passages[index], "rrf_score": score, "route_ranks": ranks}
-            for index, score, ranks in fused
-        ]
+            # 3. 先融合最多 30 条候选，再重排；不能先按最终 limit 截断。
+            rankings = {"keyword": keyword_hits, "vector": vector_hits}
+            fused = reciprocal_rank_fusion(rankings, RECALL_K, tie_breaker=lambda i: self.passages[i]["passage_id"])
+            candidates = [
+                {**self.passages[index], "rrf_score": score, "route_ranks": ranks}
+                for index, score, ranks in fused
+            ]
+            if candidates:
+                if self.reranker is None:
+                    self.reranker = CrossEncoderReranker()
+                hits, rerank_truncated = self.reranker.rerank(candidates, question, keywords, phrases, limit)
+            else:
+                hits, rerank_truncated = [], 0
         notices = []
         if truncated:
             notices.append(f"{truncated} 条语义查询超过 {EMBED_MAX_TOKENS} tokens，编码时已截断。")
+        if rerank_truncated:
+            notices.append(f"{rerank_truncated} 条重排输入超过 512 tokens，评分时已截断。")
         return {"passages": hits, "route_counts": {name: len(items) for name, items in rankings.items()},
                 "notices": notices}
 
@@ -284,11 +329,12 @@ _classics = HybridRAG()
 def search_classics(
     keyword_queries: Annotated[list[str], "BM25 使用的术语或短词组列表，每项独立检索。至少提供一项。"],
     semantic_queries: Annotated[list[str], "向量检索使用的自然语言查询列表，每项表达想查的古籍规则。至少提供一项。"],
-    limit: Annotated[int, "RRF 融合后最多返回的片段数，范围 1 到 30，默认 5。"] = 5,
+    limit: Annotated[int, "重排后最多返回的片段数，范围 1 到 30，默认 5。"] = 5,
+    question: Annotated[str, "用户当前的问题，供交叉编码器重排时参考。"] = "",
 ) -> dict:
     """需要古籍规则支持解读时，根据用户问题和已计算的命盘调用混合检索。
     当前语料主要为八字古籍。keyword_queries 是 BM25 关键词字符串列表，semantic_queries 是向量检索语句字符串列表，两组都至少提供一项。
-    工具以 RRF 融合两路排名，返回原文 text、书名 book、篇名 chapter 和可引用的 passage_id。
+    工具以 RRF 融合两路排名，再按用户问题、查询和关键词进行交叉编码器重排，返回原文、出处和可引用的 passage_id。
     limit 控制返回片段数，默认 5，最多 30。
     """
-    return _classics.search(keyword_queries, semantic_queries, limit)
+    return _classics.search(keyword_queries, semantic_queries, limit, question)
