@@ -6,7 +6,7 @@ import math
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_ollama import ChatOllama
 from langgraph.graph import START, END, MessagesState, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 
 from model_reply import generate_final_reply, reply_issue
 from tools.catalog import inspect_tianzhi_api
@@ -116,6 +116,11 @@ def create_graph(model, *, rag_tool=search_classics, answer_is_valid=None, final
         # MessagesState 会把这条新消息合入历史，下面的节点便能读取它。
         return {"messages": [response], "facts": facts}
 
+    def after_decide(state: AgentState):
+        if state.get("finalization_reason"):
+            return "finalize"
+        return "tools" if state["messages"][-1].tool_calls else "evidence"
+
     def update_facts(state: AgentState):
         """读取本次 ToolNode 回执，更新图状态，而非让工具修改外部表。"""
         facts = SessionFacts(state.get("facts"))
@@ -185,11 +190,12 @@ def create_graph(model, *, rag_tool=search_classics, answer_is_valid=None, final
     builder.add_node("agent", decide)
     builder.add_node("evidence", collect_evidence)
     builder.add_node("update_facts", update_facts)
+    builder.add_node("finalize", finalize)
     # 3. ToolNode 按模型请求调用 Python 工具，把结果或异常信息写为 ToolMessage。
     builder.add_node("tools", ToolNode(tools, handle_tool_errors=True))
     builder.add_edge(START, "agent")
-    # 4. 检查最新回复。有工具调用就执行后回到模型，给出文字回复时结束本轮。
-    builder.add_conditional_edges("agent", tools_condition, {"tools": "tools", "__end__": "evidence"})
+    # 4. 执行工具请求，补答未完成的回复，或为有效回答收集证据。
+    builder.add_conditional_edges("agent", after_decide, {"tools": "tools", "finalize": "finalize", "evidence": "evidence"})
     builder.add_edge("tools", "update_facts")
     builder.add_edge("update_facts", "agent")
     builder.add_edge("finalize", "evidence")

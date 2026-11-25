@@ -6,6 +6,7 @@ from tempfile import NamedTemporaryFile
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+from model_reply import IncompleteReplyError, generation_metadata
 
 # 以代码文件的位置为基准，从不同目录启动也会把日志写到项目下。
 TRACE_DIR = Path(__file__).resolve().parent / ".agent_trace"
@@ -35,9 +36,14 @@ class SessionTrace:
             json.dump(event, stream, ensure_ascii=False, indent=2, default=str)
             stream.write("\n```\n")
 
-    def record_message(self, message):
+    def record_message(self, message, *, rejected=False):
         # AIMessage 是模型产生的消息，既可能包含工具请求，也可能包含最终文字。
         if isinstance(message, AIMessage):
+            generation = generation_metadata(message)
+            if reason := message.additional_kwargs.get("finalization_reason"):
+                generation["finalization_reason"] = reason
+            if generation:
+                self.record("模型生成统计", generation)
             # 仅在接口实际返回独立思考字段时记录，每次模型调用各记一次。
             thinking = message.additional_kwargs.get("reasoning_content")
             if thinking:
@@ -47,7 +53,9 @@ class SessionTrace:
                     "tool_calls": message.tool_calls,
                     "invalid_tool_calls": message.invalid_tool_calls,
                 })
-            if not message.tool_calls:
+            if rejected:
+                self.record("模型未完成回复", {"text": message.text})
+            elif not message.tool_calls:
                 self.record("模型最终回复", {"text": message.text})
         elif isinstance(message, ToolMessage):
             # ToolMessage 是工具给模型的回执。能解析成 JSON 时展开，普通文字照录。
@@ -70,6 +78,7 @@ class SessionTrace:
         messages = [*history, HumanMessage(content=user_input)]
         seen = len(messages)
         evidence_recorded = False
+        rejection_recorded = False
         next_facts = self.facts
         try:
             # 2. 图每推进一步就返回一次状态。values 含全量消息，seen 记录已处理到的位置。
@@ -79,6 +88,10 @@ class SessionTrace:
                 for message in messages[seen:]:
                     self.record_message(message)
                 seen = len(messages)
+                if not rejection_recorded and (rejected := state.get("rejected_reply")) is not None:
+                    self.record_message(rejected, rejected=True)
+                    self.record("准备重新生成最终回答", {"reason": state["finalization_reason"]})
+                    rejection_recorded = True
                 if not evidence_recorded and "evidence" in state:
                     self.record("本轮证据链", state["evidence"])
                     evidence_recorded = True
@@ -86,6 +99,8 @@ class SessionTrace:
             # 3. 保留已经落盘的步骤和中断原因，再把异常交给终端处理。
             # 已完成的工具可能改变 runtime 中的引用，保留图中已更新的事实以免两者不一致。
             self.facts = next_facts
+            if isinstance(exc, IncompleteReplyError):
+                self.record_message(exc.reply, rejected=True)
             self.record("本轮中断", {"error_type": type(exc).__name__, "error": str(exc)})
             raise
         self.facts = next_facts
