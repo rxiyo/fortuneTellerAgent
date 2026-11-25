@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sys
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
@@ -38,6 +39,14 @@ BAZI_TERMS = (
     "子月 丑月 寅月 卯月 辰月 巳月 午月 未月 申月 酉月 戌月 亥月 "
     "三春 三夏 三秋 三冬 穷通宝鉴 子平真诠 三命通会 渊海子平 滴天髓 神峰通考"
 ).split()
+
+
+def inference_device(torch):
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 def split_passages(row, size=360, overlap=60):
@@ -142,7 +151,8 @@ class VectorIndex:
         from transformers import AutoModel, AutoTokenizer
 
         self.torch = torch
-        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        self.device = inference_device(torch)
+        print(f"古籍检索：加载向量模型（{self.device}）", file=sys.stderr, flush=True)
         self.tokenizer = self.load_model(AutoTokenizer)
         self.model = self.load_model(AutoModel).to(self.device).eval()
         self.passage_count = len(passages)
@@ -180,13 +190,16 @@ class VectorIndex:
 
     def load_vectors(self, windows, cache_path):
         if cache_path.is_file():
+            print(f"古籍检索：读取向量缓存 {cache_path}", file=sys.stderr, flush=True)
             # 一个窗口对应一行向量，读取后检查两边数量是否一致。
             data = self.torch.load(cache_path, map_location="cpu", weights_only=True)
             if data["vectors"].shape[0] != len(windows):
                 raise ValueError(f"向量缓存与古籍片段数量不一致：{cache_path}")
             return data["vectors"]
 
-        vectors, truncated = self.encode(windows)
+        print(f"古籍检索：首次构建向量索引，需编码 {len(windows)} 个文本窗口（{self.device}）",
+              file=sys.stderr, flush=True)
+        vectors, truncated = self.encode(windows, report_progress=True)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         # 先写临时文件再替换正式缓存，避免中断时留下只写了一半的文件。
         with NamedTemporaryFile(dir=cache_path.parent, suffix=".tmp", delete=False) as temp:
@@ -196,9 +209,10 @@ class VectorIndex:
             temp_path.replace(cache_path)
         finally:
             temp_path.unlink(missing_ok=True)
+        print(f"古籍检索：向量索引已保存到 {cache_path}", file=sys.stderr, flush=True)
         return vectors
 
-    def encode(self, texts):
+    def encode(self, texts, *, report_progress=False):
         torch = self.torch
         vectors, truncated = [], 0
         # 查询和语料共用编码：分批转 token，统计超长输入，再截断到模型上限。
@@ -215,6 +229,10 @@ class VectorIndex:
                 mask = inputs["attention_mask"].unsqueeze(-1)
                 pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
                 vectors.append(torch.nn.functional.normalize(pooled, dim=1).cpu())
+            processed = start + len(batch)
+            if report_progress and (processed % 480 == 0 or processed == len(texts)):
+                print(f"古籍检索：已编码 {processed}/{len(texts)} 个文本窗口",
+                      file=sys.stderr, flush=True)
         return torch.cat(vectors), truncated
 
     def search(self, queries):
@@ -239,7 +257,8 @@ class CrossEncoderReranker:
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
         self.torch = torch
-        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        self.device = inference_device(torch)
+        print(f"古籍检索：加载重排模型（{self.device}）", file=sys.stderr, flush=True)
 
         def load(loader):
             try:
@@ -297,6 +316,7 @@ class HybridRAG:
                 self.keyword_index = BM25Index(self.passages)
             if self.vector_index is None:
                 self.vector_index = VectorIndex(self.passages, self.cache_dir)
+            print("古籍检索：开始关键词与向量召回", file=sys.stderr, flush=True)
             keyword_hits = self.keyword_index.search(keywords)
             vector_hits, truncated = self.vector_index.search(phrases)
             # 3. 先融合最多 30 条候选，再重排；不能先按最终 limit 截断。
@@ -309,6 +329,7 @@ class HybridRAG:
             if candidates:
                 if self.reranker is None:
                     self.reranker = CrossEncoderReranker()
+                print(f"古籍检索：正在重排 {len(candidates)} 个候选片段", file=sys.stderr, flush=True)
                 hits, rerank_truncated = self.reranker.rerank(candidates, question, keywords, phrases, limit)
             else:
                 hits, rerank_truncated = [], 0
