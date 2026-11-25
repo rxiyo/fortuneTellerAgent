@@ -2,7 +2,6 @@
 import os
 
 from langchain_ollama import ChatOllama
-from langgraph.errors import GraphRecursionError
 
 from agent import create_graph
 from agent_trace import SessionTrace
@@ -51,9 +50,6 @@ def main():
         # 4. 执行这一轮并同步写日志。只有运行成功才用返回的消息替换历史。
         try:
             messages = trace.run_turn(graph, messages, user_input)
-        except GraphRecursionError:
-            print("\n本轮工具调用次数达到上限，请缩小问题范围后重试。")
-            continue
         except KeyboardInterrupt:
             print("\n已中断本轮。")
             continue

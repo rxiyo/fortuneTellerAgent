@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import signal
 import subprocess
 import sys
 import time
@@ -26,15 +25,12 @@ def dump(path, data):
     tmp.replace(path)
 
 
-def timeout_handler(signum, frame):
-    raise TimeoutError('本轮超过设定的运行时间，已中断。')
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', default=os.environ.get('OLLAMA_MODEL', 'qwen3.5:9b'))
     parser.add_argument('--base-url', default=os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434'))
-    parser.add_argument('--timeout', type=int, default=360, help='每轮最大运行秒数')
+    parser.add_argument('--cases-file', type=Path, default=TEST_DIR / '测试案例.json',
+                        help='读取指定的 JSON 案例文件（默认：测试案例.json）')
     parser.add_argument('--case', action='append', help='只运行指定案例，可重复；不指定时全部运行')
     args = parser.parse_args()
     cases = json.loads((TEST_DIR / '测试案例.json').read_text(encoding='utf-8'))['cases']
@@ -52,10 +48,9 @@ def main():
                        reasoning=True if args.model.startswith('deepseek-r1') or (
                            args.model.startswith('qwen3') and 'instruct' not in args.model.lower()) else None)
     report = {'model': args.model, 'base_url': args.base_url, 'started_at': datetime.now().astimezone().isoformat(),
-              'turn_timeout_seconds': args.timeout, 'total_cases': len(cases), 'completed_cases': 0, 'cases': []}
+              'total_cases': len(cases), 'completed_cases': 0, 'cases': []}
     dump(outdir / '结果.json', report)
     print(f'输出目录：{outdir}', flush=True)
-    signal.signal(signal.SIGALRM, timeout_handler)
     for case in cases:
         print(f"开始 {len(report['cases']) + 1}/{len(cases)} {case['id']} {case['title']}", flush=True)
         graph = create_graph(model)
@@ -71,10 +66,8 @@ def main():
             turn_result = {'input': turn['input'], 'expected_tools': turn.get('expected_tools', []),
                            'expected_checks': turn.get('expected_checks', [])}
             try:
-                signal.alarm(args.timeout)
                 old_len = len(history)
                 messages = trace.run_turn(graph, history, turn['input'])
-                signal.alarm(0)
                 added = messages[old_len + 1:]
                 calls = [call['name'] for msg in added if isinstance(msg, AIMessage) for call in msg.tool_calls]
                 tool_messages = [msg for msg in added if isinstance(msg, ToolMessage)]
@@ -91,7 +84,6 @@ def main():
                                     'expected_tools_not_called': [x for x in turn_result['expected_tools'] if x not in calls]})
                 history = messages
             except Exception as exc:
-                signal.alarm(0)
                 turn_result.update({'execution_status': 'error', 'error_type': type(exc).__name__, 'error': str(exc)})
             turn_result['elapsed_seconds'] = round(time.monotonic() - started, 2)
             item['turns'].append(turn_result)

@@ -4,9 +4,11 @@ from __future__ import annotations
 import json
 import math
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_ollama import ChatOllama
 from langgraph.graph import START, END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
+from model_reply import generate_final_reply, reply_issue
 from tools.catalog import inspect_tianzhi_api
 from tools.date_info import make_date_tool
 from tools.evidence import EvidenceChain
@@ -77,11 +79,12 @@ class AgentState(MessagesState):
     # 当前命盘与本轮证据随图状态传递；历史证据另写入日志。
     facts: dict
     evidence: dict
+    finalization_reason: str
+    rejected_reply: AIMessage
 
 
-def create_graph(model, *, rag_tool=search_classics, budget_hint=None):
+def create_graph(model, *, rag_tool=search_classics, answer_is_valid=None, final_answer_instruction=""):
     """为一个对话创建执行图，排盘结果引用在这个对话内有效。"""
-    # 1. 注册目录、排盘执行和古籍检索三个工具。测试可以传入替代的检索工具。
     evidence_chain = EvidenceChain()
     runtime = TianzhiRuntime()
     tools = [inspect_tianzhi_api, runtime.as_tool(), make_date_tool(), make_location_tool(), rag_tool]
@@ -89,13 +92,27 @@ def create_graph(model, *, rag_tool=search_classics, budget_hint=None):
     agent_model = model.bind_tools(tools)
     system_message = SystemMessage(content=SYSTEM_PROMPT)
 
+    def facts_text(facts):
+        return "当前会话命盘信息表（由工具返回自动更新）：\n" + json.dumps(facts, ensure_ascii=False, default=str)
+
+    def finalize(state: AgentState):
+        facts = state.get("facts") or SessionFacts().snapshot()
+        response = generate_final_reply(
+            model, state["messages"], system_prompt=f"{SYSTEM_PROMPT}\n\n{facts_text(facts)}",
+            reason=state["finalization_reason"],
+            instruction=final_answer_instruction, answer_is_valid=answer_is_valid,
+        )
+        return {'messages': [response]}
+
     def decide(state: AgentState):
         # 2. 模型读取系统提示词和当前全部消息，返回带 tool_calls 的请求或文字回复。
         facts = state.get("facts") or SessionFacts().snapshot()
-        current_facts = SystemMessage(content="当前会话命盘信息表（由工具返回自动更新）：\n" +
-                                      json.dumps(facts, ensure_ascii=False, default=str))
-        hints = [SystemMessage(content=budget_hint(state))] if budget_hint is not None else []
-        response = agent_model.invoke([system_message, current_facts, *hints, *state["messages"]])
+        current_facts = SystemMessage(content=facts_text(facts))
+        response = agent_model.invoke([system_message, current_facts, *state["messages"]])
+        issue = reply_issue(response, answer_is_valid=answer_is_valid, allow_tools=True,
+                            expect_done=isinstance(model, ChatOllama))
+        if issue:
+            return {"facts": facts, "finalization_reason": issue, "rejected_reply": response}
         # MessagesState 会把这条新消息合入历史，下面的节点便能读取它。
         return {"messages": [response], "facts": facts}
 
@@ -175,6 +192,7 @@ def create_graph(model, *, rag_tool=search_classics, budget_hint=None):
     builder.add_conditional_edges("agent", tools_condition, {"tools": "tools", "__end__": "evidence"})
     builder.add_edge("tools", "update_facts")
     builder.add_edge("update_facts", "agent")
+    builder.add_edge("finalize", "evidence")
     builder.add_edge("evidence", END)
-    # 49 是 LangGraph 单轮执行步数的上限，用于结束反复调用工具的循环。
-    return builder.compile().with_config({"recursion_limit": 49})
+    # 覆盖 LangGraph 默认的有限步数，让模型决定何时结束工具循环。
+    return builder.compile().with_config({"recursion_limit": math.inf})

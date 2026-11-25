@@ -48,7 +48,7 @@ def make_location_tool(facts=None):
         def request(query):
             args = {**params, "name": query}
             req = Request(GEO_URL + "?" + urlencode(args), headers={"User-Agent": "metaphysics-agent/1.0"})
-            with urlopen(req, timeout=10) as response:
+            with urlopen(req) as response:
                 return json.load(response).get("results", [])
 
         try:
