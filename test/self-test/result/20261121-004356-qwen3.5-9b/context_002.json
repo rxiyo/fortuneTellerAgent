@@ -1,0 +1,35 @@
+{
+  "id": "context_002",
+  "category": "多轮对话",
+  "title": "修改出生时间后重排",
+  "trace": "执行日志/context_002.md",
+  "turns": [
+    {
+      "input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请排盘并查询用神。",
+      "expected_tools": [
+        "lookup_location",
+        "call_tianzhi_api"
+      ],
+      "expected_checks": [],
+      "execution_status": "error",
+      "error_type": "ReadTimeout",
+      "error": "本轮超过设定的运行时间，已中断。",
+      "elapsed_seconds": 360.01
+    },
+    {
+      "input": "我刚才说错了，出生时间是下午 1 点。请用新时间重新排盘，再查询用神。",
+      "expected_tools": [
+        "call_tianzhi_api"
+      ],
+      "expected_checks": [
+        "重新排盘的输入为下午 1 点",
+        "重新计算用神",
+        "旧盘计算结果和旧引用不再作为当前盘使用"
+      ],
+      "execution_status": "error",
+      "error_type": "ReadTimeout",
+      "error": "本轮超过设定的运行时间，已中断。",
+      "elapsed_seconds": 360.01
+    }
+  ]
+}

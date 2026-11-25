@@ -1,0 +1,24 @@
+{
+  "id": "daily_001",
+  "category": "指定日期解读",
+  "title": "指定日期的个人运势",
+  "trace": "执行日志/daily_001.md",
+  "turns": [
+    {
+      "input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请从传统八字的角度，分析我公历 2026 年 11 月 21 日的运势。请先查询当天日干支，再结合命盘和相关岁运说明依据。",
+      "expected_tools": [
+        "get_date_info",
+        "call_tianzhi_api"
+      ],
+      "expected_checks": [
+        "目标日期为 2026-11-21，purpose 为 target",
+        "有当天日干支，不只分析流年流月",
+        "工具数据不足时如实说明"
+      ],
+      "execution_status": "error",
+      "error_type": "ReadTimeout",
+      "error": "本轮超过设定的运行时间，已中断。",
+      "elapsed_seconds": 360.01
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "config": {
+    "model": "qwen3.5:9b",
+    "base_url": "http://localhost:11434",
+    "year": 2025,
+    "question_ids": [
+      "ftb_0121",
+      "ftb_0122",
+      "ftb_0123",
+      "ftb_0124",
+      "ftb_0125",
+      "ftb_0126",
+      "ftb_0127",
+      "ftb_0128",
+      "ftb_0129",
+      "ftb_0130",
+      "ftb_0131",
+      "ftb_0132",
+      "ftb_0133",
+      "ftb_0134",
+      "ftb_0135",
+      "ftb_0136",
+      "ftb_0137",
+      "ftb_0138",
+      "ftb_0139",
+      "ftb_0140",
+      "ftb_0141",
+      "ftb_0142",
+      "ftb_0143",
+      "ftb_0144",
+      "ftb_0145",
+      "ftb_0146",
+      "ftb_0147",
+      "ftb_0148",
+      "ftb_0149",
+      "ftb_0150",
+      "ftb_0151",
+      "ftb_0152",
+      "ftb_0153",
+      "ftb_0154",
+      "ftb_0155",
+      "ftb_0156",
+      "ftb_0157",
+      "ftb_0158",
+      "ftb_0159",
+      "ftb_0160"
+    ],
+    "modes": [
+      "agent"
+    ],
+    "timeout_seconds": 900,
+    "temperature": 0,
+    "num_ctx": 16384,
+    "precomputed_chart": true,
+    "cot": true,
+    "bench_git_revision": "b7433280fd86d7a7c27debbc47d0303c218f0bfd",
+    "data_sha256": {
+      "data.json": "528240929b23859656bf7ec0c126da92e2523c2cf091b11f83c0e8e377412054",
+      "fortune_api_results.json": "e44ff5201486dc1917bbb24b6905a53e6a1359e76ada0eb8d5b2d9a5a88d29ed"
+    },
+    "agent_budget_hint": {
+      "version": 1,
+      "tool_round_budget": 8
+    }
+  },
+  "started_at": "2026-11-25T09:36:39.011457+00:00",
+  "records": {
+    "agent:ftb_0121": {
+      "id": "ftb_0121",
+      "case_id": "case_25",
+      "category": "家庭",
+      "mode": "agent",
+      "prompt": "以下是一道关于中国传统命理的题目。\n\n命主信息：\n坤造：广东出生 西历1951年11月14日巳时\n结合中国传统命理学（包括但不限于四柱八字、紫微斗数等），请先分析推理过程，然后给出答案。最后用'答案：X'的格式给出你的选择（X为A、B、C或D）。\n\n八字命盘信息：\n八字：辛卯 己亥 戊午 丁巳\n时辰：巳时\n五行局：金四局\n生肖：兔\n\n紫微命盘信息：\n十二宫位星曜分布：\n命宫：天魁 地空\n兄弟：紫微 七杀 文昌 天马\n夫妻：天机 天梁 地劫\n子女：天相 铃星\n财帛：太阳 巨门 天钺 火星\n疾厄：武曲 贪狼 左辅 右弼\n迁移：天同 太阴\n仆役：天府\n官禄：擎羊\n田宅：廉贞 破军 文曲 禄存\n福德：陀罗\n\n问题：此命出生家境如何？\n\n选项：\nA. 富裕\nB. 贫穷\nC. 父从商母是村干部\nD. 父母当官\n",
+      "correct_answer": "B",
+      "status": "timeout",
+      "prediction": null,
+      "prediction_official_extractor": null,
+      "correct": false,
+      "timeout_seconds": 900,
+      "trace": "执行日志/ftb_0121.md",
+      "error": "ReadTimeout: 超过单题运行时限",
+      "elapsed_seconds": 900.01
+    }
+  },
+  "stats": {
+    "agent": {
+      "total": 40,
+      "attempted": 1,
+      "completed": 0,
+      "timeout": 1,
+      "error": 0,
+      "unparsed": 0,
+      "correct": 0,
+      "accuracy_all": 0.0,
+      "accuracy_answered": null
+    }
+  },
+  "updated_at": "2026-11-25T09:51:39.054299+00:00"
+}

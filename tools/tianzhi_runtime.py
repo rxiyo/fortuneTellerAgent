@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import dataclasses
+from copy import deepcopy
 import importlib
 import inspect
 import json
 from collections.abc import Mapping
 from datetime import date, datetime
 from enum import Enum
-from threading import Lock
+from threading import RLock
 from typing import Annotated, Any, get_type_hints
 
 from langchain_core.tools import tool
@@ -36,10 +37,13 @@ def _jsonable(value: Any) -> Any:
 class TianzhiRuntime:
     """目录为允许列表；调用结果用 r1、r2 等引用在本次会话中传递。"""
 
-    def __init__(self) -> None:
+    def __init__(self, facts=None) -> None:
         # 原始对象表以 r1、r2 等为键。后续计算能直接取用真实的 Chart 对象。
         self._objects: dict[str, Any] = {}
-        self._lock = Lock()
+        self._records: dict[str, dict] = {}
+        self._lock = RLock()
+        self._next_ref = 1
+        self._facts = facts
 
     def _resolve_ref(self, reference: str) -> Any:
         # r1 取整份结果，r1.quad 取其四柱，r2.0 可以取列表中的第一项。
@@ -63,6 +67,12 @@ class TianzhiRuntime:
                 raise ValueError(f"结果引用不能指向方法：{reference}")
         return value
 
+    def take_record(self, reference: str):
+        """供 Graph 状态节点取走完整 JSON，而非截断的工具预览。"""
+        with self._lock:
+            record = self._records.pop(reference, None)
+            return deepcopy(record) if record is not None else None
+
     def _resolve(self, value: Any) -> Any:
         # 递归检查参数。引用对象可以放在普通字典或列表里，其他值原样保留。
         if isinstance(value, dict):
@@ -78,6 +88,11 @@ class TianzhiRuntime:
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict:
         """执行目录中的公开函数；arguments 可用 {"$ref": "r1.quad"} 引用先前结果。"""
+        # ToolNode 可能并发调用：保证查引用、计算、更新命盘是同一个原子操作。
+        with self._lock:
+            return self._call_locked(name, arguments)
+
+    def _call_locked(self, name: str, arguments: dict[str, Any]) -> dict:
         # 1. 先用库的公开目录确认方法存在，再加载它所在的模块。
         available = {item.name: item for item in catalog.tools()}
         item = available.get(name)
@@ -124,8 +139,18 @@ class TianzhiRuntime:
 
         # 同一轮独立的工具调用可能并发，集中分配结果引用。
         with self._lock:
-            reference = f"r{len(self._objects) + 1}"
+            if name == "bazi.chart.build_chart":
+                # 重排后旧盘引用和基于旧盘的结果均不能继续使用。
+                self._objects.clear()
+                if self._facts is not None:
+                    self._facts.set_chart(serialized, arguments)
+            elif self._facts is not None and name.startswith("bazi."):
+                self._facts.set_calculation(name, {"arguments": arguments, "result": serialized})
+            reference = f"r{self._next_ref}"
+            self._next_ref += 1
             self._objects[reference] = result
+            self._records[reference] = {"name": name, "arguments": deepcopy(arguments),
+                                        "result": deepcopy(serialized)}
         # 4. 大结果只把预览发给模型，原始对象仍可通过 ref 读取具体字段。
         encoded = json.dumps(serialized, ensure_ascii=False, default=str)
         if len(encoded) > 20000:

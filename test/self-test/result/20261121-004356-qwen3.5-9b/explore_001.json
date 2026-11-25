@@ -1,0 +1,32 @@
+{
+  "id": "explore_001",
+  "category": "其他术数探索",
+  "title": "查询紫微斗数工具",
+  "trace": "执行日志/explore_001.md",
+  "turns": [
+    {
+      "input": "请查询项目的紫微斗数工具有哪些模块，以及排盘需要什么信息。",
+      "expected_tools": [
+        "inspect_tianzhi_api"
+      ],
+      "expected_checks": [
+        "基于实际工具目录说明",
+        "不假称已完成完整解读"
+      ],
+      "execution_status": "completed",
+      "answer": "根据工具目录查询结果，紫微斗数（ziwei）层包含以下模块：\n\n## 紫微斗数模块概览\n\n| 模块 | 功能说明 |\n|------|----------|\n| **chart** | 紫微斗数排盘：照《紫微斗数全书》卷二「安身命例」诸诀，把生辰排成十二宫命盘 |\n| **duanyu** | 紫微断语：把《紫微斗数全书》里一句句断语（卷三「诸星同垣」、卷一诸赋）写成盘上可判的条件，逐条判这张盘合不合 |\n| **geju** | 紫微格局：照《紫微斗数全书》卷一「定富局」「定贵局」「定贫贱局」各条的释义字面判定 |\n| **hepan** | 合盘：两张紫微命盘之间的结构化指标 |\n| **xianyun** | 运限论断：照《紫微斗数全书》卷三限运诸论，判一张盘某一时刻的大限、小限、流年 |\n| **yunxian** | 运限：大限、小限、流年、流月、流日、流时 |\n\n---\n\n## 排盘所需信息（ziwei.chart.build_chart）\n\n要排紫微命盘，需要提供以下核心参数：\n\n### 必需参数\n1. **dt** - 出生时间（datetime格式）\n   - 需包含日期和时间，例如 `2000-01-01T12:00:00+08:00`\n   - 按出生地钟表时间和实际时区传入\n\n2. **gender** - 性别\n   - `0` 表示男\n   - `1` 表示女\n\n### 可选参数（有默认值）\n3. **leap** - 闰月处理：`'next'` / `'half'` / `'same'`（默认 `'next'`）\n4. **late_zi** - 子时处理：`'next'` / `'same'`（默认 `'next'`）\n5. **kuiyue_bingding** - 天魁天钺的丙丁位（默认 `'酉'`）\n6. **changsheng** - 长生诀选择：`'book'` / `'yinyang'`（默认 `'book'`）\n7. **tongxing** - 同星设置（默认 `True`）\n8. **daxian_start** - 大限起始：`'ming'` / `'next'`（默认 `'ming'`）\n9. **sihua_ren** - 四化人选择：`'天府'` / `'左辅'`（默认 `'天府'`）\n10. **miaowang** - 庙旺判断：`'juan3'` / `'juan2'`（默认 `'juan3'`）\n\n---\n\n## 后续分析功能\n\n排盘后还可进行：\n- **断语分析**（duanyu.find_duanyu）：查找命盘符合的《紫微斗数全书》断语\n- **格局判定**（geju.find_geju）：判定富局、贵局、贫贱局等格局\n- **运限论断**（xianyun.judge / yunxian.horoscope）：分析大限、小限、流年运势\n\n---\n\n如果您需要排紫微命盘，请提供：\n1. 出生日期和时间（公历或农历需说明）\n2. 性别\n3. 出生地（用于真太阳时修正，如需的话）",
+      "tool_calls": [
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api"
+      ],
+      "tool_errors": [],
+      "expected_tools_not_called": [],
+      "elapsed_seconds": 124.23
+    }
+  ]
+}

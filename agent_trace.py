@@ -19,8 +19,9 @@ class SessionTrace:
         with NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
                                 prefix=f"session-{timestamp}-", suffix=".md", delete=False) as stream:
             self.path = Path(stream.name)
-            stream.write("# 八字 Agent 执行日志\n")
+            stream.write("# 命理解读 Agent 执行日志\n")
         self.turn = 0
+        self.facts = {}
         self.record("会话开始", {"model": model_name})
 
     def record(self, title: str, data: dict):
@@ -68,15 +69,24 @@ class SessionTrace:
         self.record("用户输入", {"text": user_input})
         messages = [*history, HumanMessage(content=user_input)]
         seen = len(messages)
+        evidence_recorded = False
+        next_facts = self.facts
         try:
             # 2. 图每推进一步就返回一次状态。values 含全量消息，seen 记录已处理到的位置。
-            for state in graph.stream({"messages": messages}, stream_mode="values"):
+            for state in graph.stream({"messages": messages, "facts": self.facts}, stream_mode="values"):
                 messages = state["messages"]
+                next_facts = state.get("facts", next_facts)
                 for message in messages[seen:]:
                     self.record_message(message)
                 seen = len(messages)
+                if not evidence_recorded and "evidence" in state:
+                    self.record("本轮证据链", state["evidence"])
+                    evidence_recorded = True
         except (Exception, KeyboardInterrupt) as exc:
             # 3. 保留已经落盘的步骤和中断原因，再把异常交给终端处理。
+            # 已完成的工具可能改变 runtime 中的引用，保留图中已更新的事实以免两者不一致。
+            self.facts = next_facts
             self.record("本轮中断", {"error_type": type(exc).__name__, "error": str(exc)})
             raise
+        self.facts = next_facts
         return messages

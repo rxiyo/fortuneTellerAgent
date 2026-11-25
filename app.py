@@ -10,7 +10,7 @@ from agent_trace import SessionTrace
 
 def main():
     # 1. 读取本次运行的模型配置。终端里设置的环境变量优先于代码里的默认值。
-    model_name = os.environ.get("OLLAMA_MODEL", "deepseek-r1:8b")
+    model_name = os.environ.get("OLLAMA_MODEL", "qwen3.5:9b")
     base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     model = ChatOllama(
         model=model_name,
@@ -27,7 +27,7 @@ def main():
     graph = create_graph(model)
     trace = SessionTrace(model_name)
     messages = []
-    print(f"八字 Agent（Ollama: {model_name}）。输入 /reset 清空，/quit 退出。")
+    print(f"命理解读 Agent（Ollama: {model_name}）。输入 /reset 清空，/quit 退出。")
     print(f"执行日志：{trace.path}")
     while True:
         # 3. 读取用户输入。空行直接跳过，/quit 和 /reset 在本地处理。

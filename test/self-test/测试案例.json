@@ -1,0 +1,224 @@
+{
+  "name": "命理解读 Agent 测试案例",
+  "version": 1,
+  "description": "面向终端 Agent 的功能和多轮对话测试；示例出生资料为虚构数据。expected_checks 是人工或后续评测程序检查的目标，不代表已经通过。",
+  "instructions": {
+    "session": "每个案例开始前开启新会话；同一案例的 turns 按顺序在同一会话发送。",
+    "logs": "查看 .agent_trace 中对应日志的工具请求、返回结果和本轮证据链。",
+    "requirements": "日期和地点查询可能需要额外核对；地点查询需要联网，首次 RAG 可能需要模型缓存或联网下载。"
+  },
+  "cases": [
+    {
+      "id": "basic_001",
+      "category": "基础问答",
+      "title": "介绍 Agent 功能",
+      "turns": [{"input": "你好，你可以帮我做哪些命理方面的事情？", "expected_checks": ["说明可提供的八字和日期相关功能", "不夸大其他术数的当前支持程度"]}]
+    },
+    {
+      "id": "date_001",
+      "category": "日期查询",
+      "title": "查询目标日期干支与节气",
+      "turns": [{"input": "请查询公历 2026 年 11 月 21 日的农历日期、日干支和前后的节气。", "expected_tools": ["get_date_info"], "expected_checks": ["目标日期为 2026-11-21", "日期查询用途为 target", "回答与工具结果一致"]}]
+    },
+    {
+      "id": "date_002",
+      "category": "日期查询",
+      "title": "查询通用黄历",
+      "turns": [{"input": "请查询公历 2026 年 11 月 21 日的通用黄历宜忌和冲煞，并说明这是不是针对个人八字的结果。", "expected_tools": ["get_date_info"], "expected_checks": ["日期查询用途为 target", "区分通用黄历与个人命盘喜忌"]}]
+    },
+    {
+      "id": "date_003",
+      "category": "日期查询",
+      "title": "农历转公历",
+      "turns": [{"input": "农历 2024 年正月初一对应公历哪一天？这一天的日干支是什么？", "expected_tools": ["get_date_info"], "expected_checks": ["使用农历输入", "公历日期与工具结果一致"]}]
+    },
+    {
+      "id": "chart_001",
+      "category": "八字排盘",
+      "title": "按真太阳时排盘",
+      "turns": [{"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生在广东省佛山市。请按真太阳时为我排八字，展示四柱、日主、十神和藏干，并说明使用的地点和时间口径。", "expected_tools": ["lookup_location", "call_tianzhi_api"], "expected_checks": ["地点查询包含省和城市", "排盘使用明确的经度与真太阳时口径", "地点不明确或查询失败时不猜测经度", "四柱等事实与工具结果一致"]}]
+    },
+    {
+      "id": "chart_002",
+      "category": "八字排盘",
+      "title": "按钟表时间排盘",
+      "turns": [{"input": "我是男性，公历 1998 年 6 月 15 日下午 2 点出生于广东省广州市。请按出生时的钟表时间排八字，不使用真太阳时，并展示四柱。", "expected_tools": ["call_tianzhi_api"], "expected_checks": ["排盘使用不修正真太阳时的口径", "四柱与工具结果一致"]}]
+    },
+    {
+      "id": "chart_003",
+      "category": "资料收集",
+      "title": "资料不完整时追问",
+      "turns": [{"input": "请帮我排八字，我出生于 2001 年 5 月 6 日。", "expected_checks": ["追问完成所需分析的信息", "不猜测出生时间或性别", "默认公历时说明口径"]}]
+    },
+    {
+      "id": "chart_004",
+      "category": "资料收集",
+      "title": "出生时辰未知",
+      "turns": [{"input": "我是女性，公历 2000 年 8 月 12 日出生于广东省深圳市，但不知道具体出生时间。你能排出哪些信息？哪些信息无法确定？", "expected_checks": ["明确出生时间未知", "不编造确定的时柱", "能力不足时说明限制"]}]
+    },
+    {
+      "id": "context_001",
+      "category": "多轮对话",
+      "title": "排盘后连续追问",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请按真太阳时排八字，并展示四柱。", "expected_tools": ["lookup_location", "call_tianzhi_api"], "expected_checks": ["成功排盘，或说明地点查询等阻碍"]},
+        {"input": "我的日主是什么？月令和日支分别是什么？请依据刚才的命盘解释。", "expected_checks": ["如果上一轮已排盘，复用该会话命盘", "事实与命盘工具返回一致"]},
+        {"input": "按当前工具的规则，我的日主旺衰如何？请说明工具给出的判断依据。", "expected_tools": ["call_tianzhi_api"], "expected_checks": ["依据旺衰计算结果回答"]},
+        {"input": "请查询我的用神、喜神和忌神，并说明采用了哪种方法。", "expected_tools": ["call_tianzhi_api"], "expected_checks": ["结果与用神工具返回一致"]}
+      ]
+    },
+    {
+      "id": "luck_001",
+      "category": "大运流年",
+      "title": "查询前四步大运",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请按真太阳时排八字。", "expected_tools": ["lookup_location", "call_tianzhi_api"]},
+        {"input": "请列出我的前四步大运、对应年龄和年份，并说明顺行还是逆行。", "expected_tools": ["call_tianzhi_api"], "expected_checks": ["大运数据来自工具计算", "四步大运的年份和年龄与工具结果一致"]}
+      ]
+    },
+    {
+      "id": "luck_002",
+      "category": "大运流年",
+      "title": "指定流年与命盘关系",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请按真太阳时排八字。", "expected_tools": ["lookup_location", "call_tianzhi_api"]},
+        {"input": "请查询我的 2026 年流年干支，并结合当前命盘和大运说明工具返回的主要关系。", "expected_tools": ["call_tianzhi_api"], "expected_checks": ["查询 2026 年数据", "先计算再解释命盘关系"]}
+      ]
+    },
+    {
+      "id": "luck_003",
+      "category": "大运流年",
+      "title": "查询指定日期所在流月",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请按真太阳时排八字。", "expected_tools": ["lookup_location", "call_tianzhi_api"]},
+        {"input": "请查询我 2026 年 11 月 21 日所在的流月，并说明这个流月的起止节气和时间。", "expected_checks": ["按指定目标日期匹配流月", "起止节气和时间与工具结果一致"]}
+      ]
+    },
+    {
+      "id": "luck_004",
+      "category": "大运流年",
+      "title": "比较两个流年",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请按真太阳时排八字。", "expected_tools": ["lookup_location", "call_tianzhi_api"]},
+        {"input": "请分别查询我的 2025 年和 2026 年流年干支，再比较它们与我命盘的关系。请说明哪些是工具计算，哪些是你的解释。", "expected_checks": ["工具回执中分别有两个年份的数据", "不把一个年份的数据当成另一个年份", "区分计算事实和解释"]}
+      ]
+    },
+    {
+      "id": "daily_001",
+      "category": "指定日期解读",
+      "title": "指定日期的个人运势",
+      "turns": [{"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请从传统八字的角度，分析我公历 2026 年 11 月 21 日的运势。请先查询当天日干支，再结合命盘和相关岁运说明依据。", "expected_tools": ["get_date_info", "call_tianzhi_api"], "expected_checks": ["目标日期为 2026-11-21，purpose 为 target", "有当天日干支，不只分析流年流月", "工具数据不足时如实说明"]}]
+    },
+    {
+      "id": "daily_002",
+      "category": "指定日期解读",
+      "title": "出生日期与目标日期分开",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请从传统八字的角度分析我公历 2026 年 11 月 21 日的运势。", "expected_tools": ["get_date_info", "call_tianzhi_api"]},
+        {"input": "请再查询我的出生日期和 2026 年 11 月 21 日的公农历信息，并区分哪个用于排盘、哪个是我要分析的日期。", "expected_tools": ["get_date_info"], "expected_checks": ["birth_date_info 保存出生日期", "date_info 保存目标日期", "两个用途不会相互覆盖"]}
+      ]
+    },
+    {
+      "id": "daily_003",
+      "category": "指定日期解读",
+      "title": "目标年份不明确",
+      "turns": [{"input": "请看我 11 月 21 日的运势。", "expected_checks": ["无法可靠确定目标年份时询问", "不把出生年份当成目标年份"]}]
+    },
+    {
+      "id": "theme_001",
+      "category": "主题解读",
+      "title": "事业与流年",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请先排八字。"},
+        {"input": "请从传统八字角度，结合我的命盘和 2026 年流年，解释事业方面有哪些值得关注的命理规则。请区分工具计算结果和你的解释，并标注古籍依据。", "expected_checks": ["先取得相关工具事实", "引用古籍时在对应解释旁标注片段 ID", "区分传统规则与现实结果"]}
+      ]
+    },
+    {
+      "id": "theme_002",
+      "category": "主题解读",
+      "title": "学习与考试",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请先排八字。"},
+        {"input": "请结合我的命盘、大运和 2026 年流年，介绍传统命理中与学习、考试有关的分析思路。没有依据的地方请说明。", "expected_checks": ["结果与计算工具一致", "依据不足时说明", "不作确定的现实预测"]}
+      ]
+    },
+    {
+      "id": "theme_003",
+      "category": "主题解读",
+      "title": "感情关系",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请先排八字。"},
+        {"input": "请解释传统八字如何结合我的命盘分析感情关系。请先查询相关命盘事实，再给出有来源的解释，不要把古籍里的其他人命例当成我的事实。", "expected_checks": ["先查询相关命盘事实", "区分命例与适用于本盘的规则", "有古籍依据时标注片段 ID"]}
+      ]
+    },
+    {
+      "id": "rag_001",
+      "category": "古籍检索",
+      "title": "解释基础概念",
+      "turns": [{"input": "请解释八字中的日主、月令和用神。能够从项目古籍中找到依据时，请标注对应片段 ID。", "expected_checks": ["区分概念解释与古籍原文", "引用工具实际返回的片段"]}]
+    },
+    {
+      "id": "rag_002",
+      "category": "古籍检索",
+      "title": "检索岁运刑冲",
+      "turns": [{"input": "请检索古籍中关于岁运和刑冲关系的论述，给出相关原文、书名和片段 ID，并区分原文与解释。", "expected_tools": ["search_classics"], "expected_checks": ["引用片段来自工具返回", "区分原文和模型解释"]}]
+    },
+    {
+      "id": "evidence_001",
+      "category": "证据链",
+      "title": "核对最终引用",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请先排八字。"},
+        {"input": "请结合当前命盘，检索古籍中与用神有关的规则，并在每一处使用古籍支持的解释旁标注【passage_id】。", "expected_tools": ["search_classics"], "expected_checks": ["references 对应回答实际标注的片段", "检查 unresolved_citations", "人工核对原文是否适用且支持解读"]}
+      ]
+    },
+    {
+      "id": "location_001",
+      "category": "地点查询",
+      "title": "省市一起查询",
+      "turns": [{"input": "请查询广东省佛山市的地理位置，用于真太阳时计算，并说明返回的位置精度。", "expected_tools": ["lookup_location"], "expected_checks": ["分别填写城市和省份", "候选省份与广东匹配", "说明地名坐标不一定是精确出生地址"]}]
+    },
+    {
+      "id": "location_002",
+      "category": "地点查询",
+      "title": "缺少省份时追问",
+      "turns": [{"input": "我的出生城市是佛山，请查询用于排盘的经纬度。", "expected_checks": ["省级地区不明确时追问", "不自行选择其他省份的同名地点"]}]
+    },
+    {
+      "id": "location_003",
+      "category": "地点查询",
+      "title": "核对命盘表中的实际地点",
+      "turns": [{"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请根据查询到的地点按真太阳时排盘，并告诉我实际使用了哪个地点和经度。", "expected_tools": ["lookup_location", "call_tianzhi_api"], "expected_checks": ["facts.location_search 只标记与排盘经度匹配的地点或无法匹配", "不把全部候选城市写成命主出生地"]}]
+    },
+    {
+      "id": "context_002",
+      "category": "多轮对话",
+      "title": "修改出生时间后重排",
+      "turns": [
+        {"input": "我是女性，公历 2004 年 3 月 7 日中午 12 点出生于广东省佛山市。请排盘并查询用神。", "expected_tools": ["lookup_location", "call_tianzhi_api"]},
+        {"input": "我刚才说错了，出生时间是下午 1 点。请用新时间重新排盘，再查询用神。", "expected_tools": ["call_tianzhi_api"], "expected_checks": ["重新排盘的输入为下午 1 点", "重新计算用神", "旧盘计算结果和旧引用不再作为当前盘使用"]}
+      ]
+    },
+    {
+      "id": "explore_001",
+      "category": "其他术数探索",
+      "title": "查询紫微斗数工具",
+      "exploratory": true,
+      "turns": [{"input": "请查询项目的紫微斗数工具有哪些模块，以及排盘需要什么信息。", "expected_tools": ["inspect_tianzhi_api"], "expected_checks": ["基于实际工具目录说明", "不假称已完成完整解读"]}]
+    },
+    {
+      "id": "explore_002",
+      "category": "其他术数探索",
+      "title": "查询奇门遁甲工具",
+      "exploratory": true,
+      "turns": [{"input": "请查询项目的奇门遁甲工具中，起局有哪些可用方法，需要哪些参数。", "expected_tools": ["inspect_tianzhi_api"], "expected_checks": ["说明目录中实际存在的方法及参数"]}]
+    },
+    {
+      "id": "explore_003",
+      "category": "其他术数探索",
+      "title": "查询大六壬工具",
+      "exploratory": true,
+      "turns": [{"input": "请查询项目的大六壬工具有哪些模块，先说明起课需要的资料，不要自行假设输入。", "expected_tools": ["inspect_tianzhi_api"], "expected_checks": ["基于实际工具目录说明", "不假设缺失的起课资料"]}]
+    }
+  ]
+}

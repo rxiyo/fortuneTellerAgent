@@ -1,7 +1,8 @@
 """供 Agent 查询 tianzhi-core 八字层实时 API 目录的元工具。"""
 from __future__ import annotations
 
-from dataclasses import asdict
+import json
+from pathlib import Path
 from typing import Annotated
 
 from langchain_core.tools import tool
@@ -15,9 +16,12 @@ def inspect_tianzhi_api(
     module: Annotated[str, "指定 layer 后，可用子模块名筛选，例如 luck_cycle 或 yongshen。"] = "",
     name: Annotated[str, "完整方法名，例如 bazi.chart.build_chart。提供时直接查看该方法的详情。"] = "",
 ) -> dict:
-    """在选择排盘或规则计算方法前查询 tianzhi-core 的实时目录。
-    无参数时列出可用术数层；layer 选择如 bazi、ziwei、qimen、liuren 或 calendar 的一层，
-    module 按子模块筛选；name 指定完整方法名时返回签名、参数含义和返回值。此工具只查询，不执行计算。
+    """分层查询 tianzhi-core 目录，不执行计算。各层用途：
+    calendar：节气、真太阳时和纪时；core：干支五行及基本关系；
+    bazi：四柱、格局、用神、岁运和合盘；liuren：大六壬起课和占事；
+    qimen：奇门遁甲定局排盘；ziwei：紫微斗数排盘、格局和运限。
+    先用 layer 查看模块说明，再传 layer 和 module 查看该模块所有方法的完整说明；
+    已知完整方法名时可用 name 直接查详情。无参数只列各层。
     """
     layers = catalog.layers()
     if name:
@@ -36,7 +40,13 @@ def inspect_tianzhi_api(
     modules = sorted({item.module for item in available})
     if module and module not in modules:
         return {"error": f"没有这一模块：{layer}.{module}", "modules": modules}
-    # 目录项原本是 dataclass。asdict 将它转成可随工具结果返回的普通字典。
-    selected = (item for item in available if not module or item.module == module)
-    return {"layer": layer, "module": module or None, "modules": modules,
-            "tools": [asdict(item) for item in selected]}
+    if not module:
+        with (Path(__file__).parent / "module_descriptions.json").open(encoding="utf-8") as stream:
+            descriptions = json.load(stream).get(layer, {})
+        return {"layer": layer, "modules": [
+            {"name": name, "description": descriptions.get(name, "暂无模块说明，请查询模块方法。")}
+            for name in modules
+        ]}
+    selected = catalog.tools(layer, module)
+    return {"layer": layer, "module": module,
+            "tools": [{"name": item.name, "description": catalog.describe(item.name)} for item in selected]}

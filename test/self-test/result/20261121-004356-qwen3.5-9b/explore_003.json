@@ -1,0 +1,30 @@
+{
+  "id": "explore_003",
+  "category": "其他术数探索",
+  "title": "查询大六壬工具",
+  "trace": "执行日志/explore_003.md",
+  "turns": [
+    {
+      "input": "请查询项目的大六壬工具有哪些模块，先说明起课需要的资料，不要自行假设输入。",
+      "expected_tools": [
+        "inspect_tianzhi_api"
+      ],
+      "expected_checks": [
+        "基于实际工具目录说明",
+        "不假设缺失的起课资料"
+      ],
+      "execution_status": "completed",
+      "answer": "根据工具目录查询，大六壬（liuren）层包含以下四个模块：\n\n## 一、大六壬模块概览\n\n| 模块 | 名称 | 功能说明 |\n|------|------|----------|\n| **pan** | 起课 | 大六壬起课排盘 |\n| **bifa** | 毕法赋 | 毕法赋百句，条件可在课式上直接判定的句子 |\n| **keti** | 课体 | 六壬课体判定（如昴星、别责、涉害等） |\n| **zhanshi** | 占事 | 按所问之事取类神，照《六壬大全》断法逐条论断 |\n\n---\n\n## 二、起课所需资料（liuren.pan.qike）\n\n大六壬起课需要以下参数：\n\n### 1. **时间信息**\n- `year` (int)：公历年份\n- `month` (int)：公历月份\n- `day` (int)：公历日期\n- `hour` (int)：小时（0-23）\n- `minute` (int)：分钟\n\n### 2. **活时起课**（可选）\n- `user_number` (int | None)：用户报的活时数字，任意正整数按十二地支循环。若不提供（None），则用系统时辰（正时）\n\n### 3. **性别与本命**（可选）\n- `gender` (int = 0)：性别，0为男，1为女\n- `benming` (str = '')：本命年支（生肖，如子/丑/寅…），仅作断课参考，不参与排盘\n\n### 4. **地理坐标**（可选）\n- `latitude` (float = 39.9)：纬度\n- `longitude` (float = 116.4)：经度\n\n---\n\n## 三、起课后可进行的分析\n\n| 模块 | 功能 |\n|------|------|\n| **zhanshi.read** | 将课式与所问之事结合，给出结构化论断（类神、主事、事实、节奏、时机、趋势等） |\n| **keti.detect** | 判定成立的课体（如昴星、别责、涉害、遥克等） |\n| **bifa.detect** | 毕法赋百句的匹配检测 |\n\n---\n\n请您提供具体的起课时间（年月日时分），以及是否需要活时起课（user_number）、性别、本命生肖等信息，我将为您排盘。",
+      "tool_calls": [
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api",
+        "inspect_tianzhi_api"
+      ],
+      "tool_errors": [],
+      "expected_tools_not_called": [],
+      "elapsed_seconds": 123.71
+    }
+  ]
+}

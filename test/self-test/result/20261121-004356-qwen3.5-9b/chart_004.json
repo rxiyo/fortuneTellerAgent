@@ -1,0 +1,21 @@
+{
+  "id": "chart_004",
+  "category": "资料收集",
+  "title": "出生时辰未知",
+  "trace": "执行日志/chart_004.md",
+  "turns": [
+    {
+      "input": "我是女性，公历 2000 年 8 月 12 日出生于广东省深圳市，但不知道具体出生时间。你能排出哪些信息？哪些信息无法确定？",
+      "expected_tools": [],
+      "expected_checks": [
+        "明确出生时间未知",
+        "不编造确定的时柱",
+        "能力不足时说明限制"
+      ],
+      "execution_status": "error",
+      "error_type": "ReadTimeout",
+      "error": "本轮超过设定的运行时间，已中断。",
+      "elapsed_seconds": 360.0
+    }
+  ]
+}
