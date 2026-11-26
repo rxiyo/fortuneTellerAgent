@@ -42,6 +42,15 @@ def dump(path, value):
     temp.replace(path)
 
 
+def prepare_prompt(bench, question):
+    prompt = bench._prepare_prompt(question, use_cot=True, use_astro=True)
+    return prompt.replace(
+        "请先分析推理过程，然后给出答案。最后用'答案：X'的格式给出你的选择（X为A、B、C或D）。",
+        "请在回答的第一行单独用'答案：X'的格式给出你的选择（X为A、B、C或D），然后分析推理过程。",
+        1,
+    )
+
+
 def extract_explicit(answer, *, require_answer_line=False):
     cleaned = re.sub(r'[*_`]', '', answer)
     lines = re.findall(r'^[ \t]*答案[ \t]*[：:][ \t]*([A-D])[。.！!]?[ \t]*$', cleaned, re.I | re.M)
@@ -171,7 +180,7 @@ def main():
               'project_python_dirty': bool(project_source_status) if project_source_status is not None else None,
               'langchain_ollama_version': version('langchain-ollama')}
     if args.dry_run:
-        print(json.dumps({'config':config,'example_prompt':bench._prepare_prompt(questions[0], True, True)},ensure_ascii=False,indent=2)); return
+        print(json.dumps({'config':config,'example_prompt':prepare_prompt(bench, questions[0])},ensure_ascii=False,indent=2)); return
     if args.output is None:
         root = PROJECT / 'test/MingLi-Bench/result'
         root.mkdir(parents=True, exist_ok=True)
@@ -207,7 +216,7 @@ def main():
                                  retry_unanswered=args.retry_unanswered) for k in keys)
     progress = tqdm(total=len(keys), initial=skipped, desc='评测进度', unit='项', dynamic_ncols=True)
     for q in questions:
-        prompt = bench._prepare_prompt(q, use_cot=True, use_astro=True)
+        prompt = prepare_prompt(bench, q)
         for mode in modes:
             key = mode + ':' + q['id']
             if not should_run(records.get(key), retry_failed=args.retry_failed,
